@@ -109,6 +109,7 @@ struct Manifest {
 struct Package {
     version: String,
     target: BTreeMap<String, Target>,
+    optional: Option<bool>,
 }
 
 #[derive(RustcEncodable)]
@@ -134,6 +135,12 @@ impl Target {
             extensions: None,
         }
     }
+}
+
+#[derive(PartialEq, Eq)]
+enum Optional {
+    Yes,
+    No,
 }
 
 #[derive(RustcEncodable)]
@@ -240,18 +247,19 @@ impl Builder {
             pkg: BTreeMap::new(),
         };
 
-        self.package("rustc", &mut manifest.pkg, HOSTS);
-        self.package("cargo", &mut manifest.pkg, HOSTS);
-        self.package("rust-mingw", &mut manifest.pkg, MINGW);
-        self.package("rust-std", &mut manifest.pkg, TARGETS);
-        self.package("rust-docs", &mut manifest.pkg, TARGETS);
-        self.package("rust-src", &mut manifest.pkg, &["*"]);
-        self.package("rls", &mut manifest.pkg, HOSTS);
-        self.package("rust-analysis", &mut manifest.pkg, TARGETS);
+        self.package("rustc", &mut manifest.pkg, HOSTS, Optional::No);
+        self.package("cargo", &mut manifest.pkg, HOSTS, Optional::No);
+        self.package("rust-mingw", &mut manifest.pkg, MINGW, Optional::No);
+        self.package("rust-std", &mut manifest.pkg, TARGETS, Optional::No);
+        self.package("rust-docs", &mut manifest.pkg, TARGETS, Optional::Yes);
+        self.package("rust-src", &mut manifest.pkg, &["*"], Optional::No);
+        self.package("rls", &mut manifest.pkg, HOSTS, Optional::No);
+        self.package("rust-analysis", &mut manifest.pkg, TARGETS, Optional::No);
 
         let mut pkg = Package {
             version: self.cached_version("rust").to_string(),
             target: BTreeMap::new(),
+            optional: None
         };
         for host in HOSTS {
             let filename = self.filename("rust", host);
@@ -321,7 +329,8 @@ impl Builder {
     fn package(&mut self,
                pkgname: &str,
                dst: &mut BTreeMap<String, Package>,
-               targets: &[&str]) {
+               targets: &[&str],
+               optional: Optional) {
         let targets = targets.iter().map(|name| {
             let filename = self.filename(pkgname, name);
             let digest = match self.digests.remove(&filename) {
@@ -345,6 +354,11 @@ impl Builder {
         dst.insert(pkgname.to_string(), Package {
             version: self.cached_version(pkgname).to_string(),
             target: targets,
+            optional: if optional == Optional::Yes {
+                Some(true)
+            } else {
+                None
+            },
         });
     }
 
