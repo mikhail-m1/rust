@@ -584,7 +584,7 @@ impl<'c, 'b, 'a: 'b+'c, 'gcx, 'tcx: 'a> MirBorrowckCtxt<'c, 'b, 'a, 'gcx, 'tcx> 
             }
         }
 
-        if let Some(mpi) = self.move_path_for_lvalue(context, move_data, lvalue) {
+        if let Some((mpi, true)) = self.move_path_for_lvalue(context, move_data, lvalue) {
             if flow_state.inits.curr_state.contains(&mpi) {
                 // may already be assigned before reaching this statement;
                 // report error.
@@ -616,7 +616,8 @@ impl<'c, 'b, 'a: 'b+'c, 'gcx, 'tcx: 'a> MirBorrowckCtxt<'c, 'b, 'a, 'gcx, 'tcx> 
 
         let maybe_uninits = &flow_state.uninits;
         let move_data = maybe_uninits.base_results.operator().move_data();
-        if let Some(mpi) = self.move_path_for_lvalue(context, move_data, lvalue) {
+        error!("check for {} span {:?} {:?}", desired_action, lvalue_span, move_data);
+        if let Some((mpi, _)) = self.move_path_for_lvalue(context, move_data, lvalue) {
             if maybe_uninits.curr_state.contains(&mpi) {
                 // find and report move(s) that could cause this to be uninitialized
                 self.report_use_of_moved(context, desired_action, lvalue_span);
@@ -631,15 +632,16 @@ impl<'c, 'b, 'a: 'b+'c, 'gcx, 'tcx: 'a> MirBorrowckCtxt<'c, 'b, 'a, 'gcx, 'tcx> 
                             _context: Context,
                             move_data: &MoveData<'gcx>,
                             lvalue: &Lvalue<'gcx>)
-                            -> Option<MovePathIndex>
+                            -> Option<(MovePathIndex, bool)>
     {
         // If returns None, then there is no move path corresponding
         // to a direct owner of `lvalue` (which means there is nothing
         // that borrowck tracks for its analysis).
 
         match move_data.rev_lookup.find(lvalue) {
+            LookupResult::Parent(Some(mpi)) => Some((mpi, false)),
             LookupResult::Parent(_) => None,
-            LookupResult::Exact(mpi) => Some(mpi),
+            LookupResult::Exact(mpi) => Some((mpi, true)),
         }
     }
 
