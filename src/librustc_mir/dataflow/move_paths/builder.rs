@@ -133,6 +133,8 @@ impl<'b, 'a, 'gcx, 'tcx> Gatherer<'b, 'a, 'gcx, 'tcx> {
         let mir = self.builder.mir;
         let tcx = self.builder.tcx;
         let place_ty = proj.base.ty(mir, tcx).to_ty(tcx);
+        let mut elem = proj.elem.clone();
+        let mut place = place.clone();
         match place_ty.sty {
             ty::TyRef(..) | ty::TyRawPtr(..) =>
                 return Err(MoveError::cannot_move_out_of(mir.source_info(self.loc).span,
@@ -154,7 +156,7 @@ impl<'b, 'a, 'gcx, 'tcx> Gatherer<'b, 'a, 'gcx, 'tcx> {
                             _ => false
                         },
                     })),
-            ty::TyArray(..) => match proj.elem {
+            ty::TyArray(_, size) => match proj.elem {
                 ProjectionElem::Index(..) =>
                     return Err(MoveError::cannot_move_out_of(
                         mir.source_info(self.loc).span,
@@ -162,12 +164,21 @@ impl<'b, 'a, 'gcx, 'tcx> Gatherer<'b, 'a, 'gcx, 'tcx> {
                             ty: place_ty, is_index: true
                         })),
                 _ => {
+                    let opt_size = size.val.to_const_int().and_then(|v| v.to_u64());
+                    if let Some(size) = opt_size {
+                        let size = size as u32;
+                        if let ProjectionElem::ConstantIndex{offset, min_length : _, from_end: true} = proj.elem {
+                            elem = ProjectionElem::ConstantIndex{offset: size - offset, min_length: size - offset + 1, from_end: false };
+                            place = Place::Projection(box PlaceProjection{elem: elem.clone(), base: proj.base.clone()});
+                            debug!("#### {:?} {:?} = {:?}", place, elem, size);
+                        }
+                    }
                     // FIXME: still badly broken
                 }
             },
             _ => {}
         };
-        match self.builder.data.rev_lookup.projections.entry((base, proj.elem.lift())) {
+        match self.builder.data.rev_lookup.projections.entry((base, elem.lift())) {
             Entry::Occupied(ent) => Ok(*ent.get()),
             Entry::Vacant(ent) => {
                 let path = MoveDataBuilder::new_move_path(
@@ -175,7 +186,7 @@ impl<'b, 'a, 'gcx, 'tcx> Gatherer<'b, 'a, 'gcx, 'tcx> {
                     &mut self.builder.data.path_map,
                     &mut self.builder.data.init_path_map,
                     Some(base),
-                    place.clone()
+                    place//.clone()
                 );
                 ent.insert(path);
                 Ok(path)
