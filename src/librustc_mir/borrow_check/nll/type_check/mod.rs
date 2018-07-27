@@ -73,9 +73,12 @@ macro_rules! span_mirbug_and_err {
 
 mod constraint_conversion;
 pub mod free_region_relations;
+mod escaping_locals;
 mod input_output;
 mod liveness;
 mod relate_tys;
+
+use self::escaping_locals::FindEscapingLocals;
 
 /// Type checks the given `mir` in the context of the inference
 /// context `infcx`. Returns any region constraints that have yet to
@@ -166,6 +169,25 @@ pub(crate) fn type_check<'gcx, 'tcx>(
             Some(&mut borrowck_context),
             Some(errors_buffer),
             |cx| {
+                // Fast path for statics: any references or lifetimes flowing into it
+                // must be 'static, so we perform a union-find of all assigned locals, in order to
+                // locate the ones flowing into _0. These should just have their regions
+                // outlive 'static instead of going through the liveness computation.
+                if infcx.tcx.is_static(mir_def_id).is_some() {
+                    let escaping_locals = mir.find_escaping_locals();
+
+                    // TMP: actually use the locals union-find to record their regions as
+                    // outliving 'static, rather than computing liveness for them
+                    if escaping_locals.len() == mir.local_decls.len() {
+                        // All variables flowed into the static, we don't need to
+                        // generate the liveness.
+                    } else {
+                        // Only some of the locals need liveness computed,
+                        // so maybe just pass those to the LivenessMap.
+                    }
+                    // TMP - end
+                }
+
                 liveness::generate(cx, mir, liveness, flow_inits, move_data);
                 cx.equate_inputs_and_outputs(
                     mir,
