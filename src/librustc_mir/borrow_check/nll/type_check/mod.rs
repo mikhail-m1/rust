@@ -173,8 +173,10 @@ pub(crate) fn type_check<'gcx, 'tcx>(
                 // must be 'static, so we perform a union-find of all assigned locals, in order to
                 // locate the ones flowing into _0. These should just have their regions
                 // outlive 'static instead of going through the liveness computation.
+                debug!("#### {:?}", infcx.tcx.hir.get_if_local(mir_def_id));
                 if infcx.tcx.is_static(mir_def_id).is_some() {
                     let escaping_locals = mir.find_escaping_locals();
+                    debug!("##### {} of {}", escaping_locals.len(), mir.local_decls.len());
 
                     // TMP: actually use the locals union-find to record their regions as
                     // outliving 'static, rather than computing liveness for them
