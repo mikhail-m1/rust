@@ -89,6 +89,8 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
 
         debug!("check_closure: ty_of_closure returns {:?}", liberated_sig);
 
+        self.tables.borrow_mut().user_closure_type.insert(expr_def_id, self.infcx.canonicalize_response(&bound_sig));
+
         let generator_types = check_fn(
             self,
             self.param_env,
@@ -666,9 +668,10 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
             self.param_env,
             &liberated_sig,
         );
-        ClosureSignatures {
+        let sig = ClosureSignatures {
             bound_sig,
             liberated_sig,
-        }
+        };
+        sig
     }
 }

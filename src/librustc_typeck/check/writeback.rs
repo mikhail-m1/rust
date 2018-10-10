@@ -327,6 +327,21 @@ impl<'cx, 'gcx, 'tcx> WritebackCx<'cx, 'gcx, 'tcx> {
         debug_assert_eq!(fcx_tables.local_id_root, self.tables.local_id_root);
         let common_local_id_root = fcx_tables.local_id_root.unwrap();
 
+        for (&id, c_ty) in fcx_tables.user_closure_type.iter() {
+            let c_ty = if let Some(c_ty) = self.tcx().lift_to_global(c_ty) {
+                c_ty
+            } else {
+                panic!("");
+                /*
+                span_bug!(
+                    id.to_span(&self.fcx.tcx),
+                    "writeback: `{:?}` missing from the global type context",
+                    c_ty
+                );*/
+            };
+            self.tables.user_closure_type.insert(id, c_ty.clone());
+        }
+
         for (&id, &origin) in fcx_tables.closure_kind_origins().iter() {
             let hir_id = hir::HirId {
                 owner: common_local_id_root.index,

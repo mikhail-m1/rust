@@ -630,6 +630,8 @@ fn construct_fn<'a, 'gcx, 'tcx, A>(hir: Cx<'a, 'gcx, 'tcx>,
     info!("fn_id {:?} has attrs {:?}", closure_expr_id,
           tcx.get_attrs(closure_expr_id));
 
+    debug!("### tables {:?}", hir.tables().user_closure_type);//.get(&closure_expr_id));
+
     let mut mir = builder.finish(yield_ty);
     mir.spread_arg = spread_arg;
     mir

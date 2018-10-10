@@ -49,8 +49,8 @@ use ty::layout::{LayoutDetails, TargetDataLayout};
 use ty::query;
 use ty::steal::Steal;
 use ty::BindingMode;
-use ty::CanonicalTy;
-use util::nodemap::{DefIdSet, ItemLocalMap};
+use ty::{CanonicalTy, Canonical};
+use util::nodemap::{DefIdSet, ItemLocalMap, DefIdMap};
 use util::nodemap::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use rustc_data_structures::stable_hasher::{HashStable, hash_stable_hashmap,
@@ -445,6 +445,8 @@ pub struct TypeckTables<'tcx> {
     /// All the existential types that are restricted to concrete types
     /// by this function
     pub concrete_existential_types: FxHashMap<DefId, Ty<'tcx>>,
+
+    pub user_closure_type: DefIdMap<Canonical<'tcx, ty::PolyFnSig<'tcx>>>,
 }
 
 impl<'tcx> TypeckTables<'tcx> {
@@ -469,6 +471,7 @@ impl<'tcx> TypeckTables<'tcx> {
             tainted_by_errors: false,
             free_region_map: FreeRegionMap::new(),
             concrete_existential_types: FxHashMap(),
+            user_closure_type: DefIdMap(),
         }
     }
 
@@ -780,6 +783,7 @@ impl<'a, 'gcx> HashStable<StableHashingContext<'a>> for TypeckTables<'gcx> {
             tainted_by_errors,
             ref free_region_map,
             ref concrete_existential_types,
+            ref user_closure_type,
         } = *self;
 
         hcx.with_node_id_hashing_mode(NodeIdHashingMode::HashDefPath, |hcx| {
@@ -822,6 +826,7 @@ impl<'a, 'gcx> HashStable<StableHashingContext<'a>> for TypeckTables<'gcx> {
             tainted_by_errors.hash_stable(hcx, hasher);
             free_region_map.hash_stable(hcx, hasher);
             concrete_existential_types.hash_stable(hcx, hasher);
+            user_closure_type.hash_stable(hcx, hasher);
         })
     }
 }

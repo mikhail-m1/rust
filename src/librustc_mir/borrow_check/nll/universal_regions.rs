@@ -484,15 +484,21 @@ impl<'cx, 'gcx, 'tcx> UniversalRegionsBuilder<'cx, 'gcx, 'tcx> {
     fn defining_ty(&self) -> DefiningTy<'tcx> {
         let tcx = self.infcx.tcx;
         let closure_base_def_id = tcx.closure_base_def_id(self.mir_def_id);
+        debug!("#### id {:?} cid {:?} body knd {:?}", self.mir_def_id, closure_base_def_id, tcx.hir.body_owner_kind(self.mir_node_id));
 
         match tcx.hir.body_owner_kind(self.mir_node_id) {
             BodyOwnerKind::Fn => {
                 let defining_ty = if self.mir_def_id == closure_base_def_id {
                     tcx.type_of(closure_base_def_id)
+                //} else if let Some(ty) = tcx.typeck_tables_of(self.mir_def_id).user_closure_type.get(&self.mir_def_id) {
+                //    tcx.mk_fn_ptr(*ty)
                 } else {
                     let tables = tcx.typeck_tables_of(self.mir_def_id);
                     tables.node_id_to_type(self.mir_hir_id)
                 };
+                if let Some(sign) = tcx.typeck_tables_of(self.mir_def_id).user_closure_type.get(&self.mir_def_id) {
+                    debug!("#### {:?} {:?}", sign.value.inputs_and_output(), sign);
+                }
 
                 debug!("defining_ty (pre-replacement): {:?}", defining_ty);
 
@@ -574,30 +580,47 @@ impl<'cx, 'gcx, 'tcx> UniversalRegionsBuilder<'cx, 'gcx, 'tcx> {
         match defining_ty {
             DefiningTy::Closure(def_id, substs) => {
                 assert_eq!(self.mir_def_id, def_id);
-                let closure_sig = substs.closure_sig_ty(def_id, tcx).fn_sig(tcx);
-                let inputs_and_output = closure_sig.inputs_and_output();
-                let closure_ty = tcx.closure_env_ty(def_id, substs).unwrap();
-                ty::Binder::fuse(
-                    closure_ty,
-                    inputs_and_output,
-                    |closure_ty, inputs_and_output| {
-                        // The "inputs" of the closure in the
-                        // signature appear as a tuple.  The MIR side
-                        // flattens this tuple.
-                        let (&output, tuplized_inputs) = inputs_and_output.split_last().unwrap();
-                        assert_eq!(tuplized_inputs.len(), 1, "multiple closure inputs");
-                        let inputs = match tuplized_inputs[0].sty {
-                            ty::Tuple(inputs) => inputs,
-                            _ => bug!("closure inputs not a tuple: {:?}", tuplized_inputs[0]),
-                        };
+                if let Some(sign) = tcx.typeck_tables_of(self.mir_def_id).user_closure_type.get(&self.mir_def_id) {
+                    // ugly hack, but it doesn't help
+                    let closure_sig = sign.value;
+                    let inputs_and_output = closure_sig.inputs_and_output();
+                    let closure_ty = tcx.closure_env_ty(def_id, substs).unwrap();
+                    ty::Binder::fuse(
+                        closure_ty,
+                        inputs_and_output,
+                        |closure_ty, inputs_and_output| {
+                            tcx.mk_type_list(
+                                iter::once(closure_ty)
+                                .chain(inputs_and_output.iter().cloned())
+                            )
+                        },
+                    )
+                } else {
+                    let closure_sig = substs.closure_sig_ty(def_id, tcx).fn_sig(tcx);
+                    let inputs_and_output = closure_sig.inputs_and_output();
+                    let closure_ty = tcx.closure_env_ty(def_id, substs).unwrap();
+                    ty::Binder::fuse(
+                        closure_ty,
+                        inputs_and_output,
+                        |closure_ty, inputs_and_output| {
+                            // The "inputs" of the closure in the
+                            // signature appear as a tuple.  The MIR side
+                            // flattens this tuple.
+                            let (&output, tuplized_inputs) = inputs_and_output.split_last().unwrap();
+                            assert_eq!(tuplized_inputs.len(), 1, "multiple closure inputs");
+                            let inputs = match tuplized_inputs[0].sty {
+                                ty::Tuple(inputs) => inputs,
+                                _ => bug!("closure inputs not a tuple: {:?}", tuplized_inputs[0]),
+                            };
 
-                        tcx.mk_type_list(
-                            iter::once(closure_ty)
+                            tcx.mk_type_list(
+                                iter::once(closure_ty)
                                 .chain(inputs.iter().cloned())
                                 .chain(iter::once(output)),
-                        )
-                    },
-                )
+                            )
+                        }
+                    )
+                }
             }
 
             DefiningTy::Generator(def_id, substs, movability) => {
